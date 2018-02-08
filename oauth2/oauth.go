@@ -54,7 +54,8 @@ type TokenInfo struct {
 	TokenType string `json:"token_type,omitempty"`
 
 	// The scopes for this tolen
-	Scope string `json:"scope,omitempty"`
+	Scope   string `json:"scope,omitempty"`
+	IDToken string `json:"id_token,omitempty"`
 }
 
 // JSONError represents an oauth error response in json form.
