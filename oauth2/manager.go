@@ -1,8 +1,11 @@
 package oauth2
 
 import (
+	"context"
 	"fmt"
+	oidc "github.com/coreos/go-oidc"
 	"github.com/tarent/loginsrv/model"
+	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
 	"strings"
@@ -93,32 +96,49 @@ func (manager *Manager) AddConfig(providerName string, opts map[string]string) e
 	if !exist {
 		return fmt.Errorf("no provider for name %v", providerName)
 	}
+	var endpoint oauth2.Endpoint
+
+	if providerName == "oidc" {
+		ctx := context.Background()
+		provider, err := oidc.NewProvider(ctx, "https://oidc.doa.otc.hlg.de")
+		if err != nil {
+			return err
+		}
+		endpoint = provider.Endpoint()
+	} else {
+		endpoint = oauth2.Endpoint{AuthURL: p.AuthURL, TokenURL: p.TokenURL}
+	}
+
+	config := oauth2.Config{
+		Endpoint: endpoint,
+	}
 
 	cfg := Config{
 		Provider: p,
-		AuthURL:  p.AuthURL,
-		TokenURL: p.TokenURL,
 	}
 
 	clientID, exist := opts["client_id"]
 	if !exist {
 		return fmt.Errorf("missing parameter client_id")
 	}
-	cfg.ClientID = clientID
+	config.ClientID = clientID
 
 	clientSecret, exist := opts["client_secret"]
 	if !exist {
 		return fmt.Errorf("missing parameter client_secret")
 	}
-	cfg.ClientSecret = clientSecret
+	config.ClientSecret = clientSecret
 
 	if scope, exist := opts["scope"]; exist {
-		cfg.Scope = scope
+		config.Scopes = strings.Split(scope, " ")
 	}
 
 	if redirectURI, exist := opts["redirect_uri"]; exist {
+		config.RedirectURL = redirectURI
 		cfg.RedirectURI = redirectURI
 	}
+	fmt.Println(config.RedirectURL)
+	cfg.Config = config
 
 	manager.configs[providerName] = cfg
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/oauth2"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -40,6 +41,7 @@ type Config struct {
 
 	// The oauth provider
 	Provider Provider
+	Config   oauth2.Config
 }
 
 // TokenInfo represents the credentials used to authorize
@@ -69,23 +71,17 @@ const defaultTimeout = 5 * time.Second
 // StartFlow by redirecting the user to the login provider.
 // A state parameter to protect against cross-site request forgery attacks is randomly generated and stored in a cookie
 func StartFlow(cfg Config, w http.ResponseWriter) {
-	values := make(url.Values)
-	values.Set("client_id", cfg.ClientID)
-	values.Set("scope", cfg.Scope)
-	values.Set("redirect_uri", cfg.RedirectURI)
-	values.Set("response_type", "code")
-
 	// set and store the state param
-	values.Set("state", randStringBytes(15))
+	state := randStringBytes(15)
 	http.SetCookie(w, &http.Cookie{
 		Name:     stateCookieName,
 		MaxAge:   60 * 10, // 10 minutes
-		Value:    values.Get("state"),
+		Value:    state,
 		HttpOnly: true,
 	})
 
-	targetURL := cfg.AuthURL + "?" + values.Encode()
-	w.Header().Set("Location", targetURL)
+	fmt.Println(cfg.Config.AuthCodeURL(state))
+	w.Header().Set("Location", cfg.Config.AuthCodeURL(state))
 	w.WriteHeader(http.StatusFound)
 }
 
