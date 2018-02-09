@@ -7,6 +7,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/bitbucket"
 )
 
 var bitbucketAPI = "https://api.bitbucket.org/2.0"
@@ -38,7 +41,7 @@ type email struct {
 	Email       string `json:"email,omitempty"`
 	IsConfirmed bool   `json:"is_confirmed,omitempty"`
 	IsPrimary   bool   `json:"is_primary,omitempty"`
-	Links struct {
+	Links       struct {
 		Self struct {
 			Href string
 		}
@@ -57,7 +60,7 @@ func (e *emails) getPrimaryEmailAddress() string {
 }
 
 // getBitbucketEmails Retrieves bitbucket user emails from the Bitbucket API emails service
-func getBitbucketEmails(token TokenInfo) (emails, error) {
+func getBitbucketEmails(token *oauth2.Token) (emails, error) {
 	emailUrl := fmt.Sprintf("%v/user/emails?access_token=%v", bitbucketAPI, token.AccessToken)
 	userEmails := emails{}
 	resp, err := http.Get(emailUrl)
@@ -89,10 +92,11 @@ func getBitbucketEmails(token TokenInfo) (emails, error) {
 }
 
 var providerBitbucket = Provider{
-	Name:     "bitbucket",
-	AuthURL:  "https://bitbucket.org/site/oauth2/authorize",
-	TokenURL: "https://bitbucket.org/site/oauth2/access_token",
-	GetUserInfo: func(token TokenInfo) (model.UserInfo, string, error) {
+	Name: "bitbucket",
+	GetEndpoint: func(config *Config) oauth2.Endpoint {
+		return bitbucket.Endpoint
+	},
+	GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {
 		gu := bitbucketUser{}
 		url := fmt.Sprintf("%v/user?access_token=%v", bitbucketAPI, token.AccessToken)
 		resp, err := http.Get(url)

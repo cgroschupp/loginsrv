@@ -2,14 +2,11 @@ package oauth2
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	oidc "github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 )
 
@@ -20,28 +17,10 @@ func init() {
 // Config describes a typical 3-legged OAuth2 flow, with both the
 // client application information and the server's endpoint URLs.
 type Config struct {
-	// ClientID is the application's ID.
-	ClientID string
-
-	// ClientSecret is the application's secret.
-	ClientSecret string
-
-	// The oauth authentication url to redirect to
-	AuthURL string
-
-	// The url for token exchange
-	TokenURL string
-
-	// RedirectURL is the URL to redirect users going through
-	// the OAuth flow, after the resource owner's URLs.
-	RedirectURI string
-
-	// Scope specifies optional requested permissions, this is a *space* separated list.
-	Scope string
-
 	// The oauth provider
-	Provider Provider
-	Config   oauth2.Config
+	Provider     Provider
+	Config       oauth2.Config
+	OIDCProvider *oidc.Provider
 }
 
 // TokenInfo represents the credentials used to authorize
@@ -80,74 +59,30 @@ func StartFlow(cfg Config, w http.ResponseWriter) {
 		HttpOnly: true,
 	})
 
-	fmt.Println(cfg.Config.AuthCodeURL(state))
 	w.Header().Set("Location", cfg.Config.AuthCodeURL(state))
 	w.WriteHeader(http.StatusFound)
 }
 
 // Authenticate after coming back from the oauth flow.
 // Verify the state parameter againt the state cookie from the request.
-func Authenticate(cfg Config, r *http.Request) (TokenInfo, error) {
+func Authenticate(cfg Config, r *http.Request) (*oauth2.Token, error) {
 	if r.FormValue("error") != "" {
-		return TokenInfo{}, fmt.Errorf("error: %v", r.FormValue("error"))
+		return &oauth2.Token{}, fmt.Errorf("error: %v", r.FormValue("error"))
 	}
 
 	state := r.FormValue("state")
 	stateCookie, err := r.Cookie(stateCookieName)
 	if err != nil || stateCookie.Value != state {
-		return TokenInfo{}, fmt.Errorf("error: oauth state param could not be verified")
+		return &oauth2.Token{}, fmt.Errorf("error: oauth state param could not be verified")
 	}
 
 	code := r.FormValue("code")
 	if code == "" {
-		return TokenInfo{}, fmt.Errorf("error: no auth code provided")
-	}
-	return getAccessToken(cfg, state, code)
-}
-
-func getAccessToken(cfg Config, state, code string) (TokenInfo, error) {
-	values := url.Values{}
-	values.Set("client_id", cfg.ClientID)
-	values.Set("client_secret", cfg.ClientSecret)
-	values.Set("code", code)
-	values.Set("redirect_uri", cfg.RedirectURI)
-	values.Set("grant_type", "authorization_code")
-
-	r, _ := http.NewRequest("POST", cfg.TokenURL, strings.NewReader(values.Encode()))
-	cntx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
-	defer cancel()
-	r.WithContext(cntx)
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.Header.Set("Accept", "application/json")
-	resp, err := http.DefaultClient.Do(r)
-	if err != nil {
-		return TokenInfo{}, err
+		return &oauth2.Token{}, fmt.Errorf("error: no auth code provided")
 	}
 
-	if resp.StatusCode != 200 {
-		return TokenInfo{}, fmt.Errorf("error: expected http status 200 on token exchange, but got %v", resp.StatusCode)
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return TokenInfo{}, fmt.Errorf("error reading token exchange response: %q", err)
-	}
-
-	jsonError := JSONError{}
-	json.Unmarshal(body, &jsonError)
-	if jsonError.Error != "" {
-		return TokenInfo{}, fmt.Errorf("error: got %q on token exchange", jsonError.Error)
-	}
-
-	tokenInfo := TokenInfo{}
-	err = json.Unmarshal(body, &tokenInfo)
-	if err != nil {
-		return TokenInfo{}, fmt.Errorf("error on parsing oauth token: %v", err)
-	}
-
-	if tokenInfo.AccessToken == "" {
-		return TokenInfo{}, fmt.Errorf("error: no access_token on token exchange")
-	}
-	return tokenInfo, nil
+	ctx := context.Background()
+	return cfg.Config.Exchange(ctx, code)
 }
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

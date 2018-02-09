@@ -2,6 +2,7 @@ package oauth2
 
 import (
 	"github.com/tarent/loginsrv/model"
+	"golang.org/x/oauth2"
 )
 
 // Provider is the description of an oauth provider adapter
@@ -19,7 +20,8 @@ type Provider struct {
 	// for fetching the user information.
 	// Possible keys in the returned map are:
 	// username, email, name
-	GetUserInfo func(token TokenInfo) (u model.UserInfo, rawUserJson string, err error)
+	GetUserInfo func(token *oauth2.Token, config *Config) (u model.UserInfo, rawUserJson string, err error)
+	GetEndpoint func(config *Config) (endpoint oauth2.Endpoint)
 }
 
 var provider = map[string]Provider{}

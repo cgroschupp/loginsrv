@@ -5,6 +5,8 @@ import (
 	"fmt"
 	oidc "github.com/coreos/go-oidc"
 	"github.com/tarent/loginsrv/model"
+
+	"golang.org/x/oauth2"
 )
 
 func init() {
@@ -12,19 +14,21 @@ func init() {
 }
 
 var providerOidc = Provider{
-	Name:     "oidc",
-	AuthURL:  "https://oidc.doa.otc.hlg.de/auth",
-	TokenURL: "https://oidc.doa.otc.hlg.de/token",
-	GetUserInfo: func(token TokenInfo) (model.UserInfo, string, error) {
+	Name: "oidc",
+	GetEndpoint: func(config *Config) oauth2.Endpoint {
+		return config.OIDCProvider.Endpoint()
+	},
+	GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {
 		ctx := context.Background()
 
-		keySet := oidc.NewRemoteKeySet(ctx, "https://oidc.doa.otc.hlg.de/keys")
-		config := oidc.Config{
-			ClientID: "example-app",
+		verifier := config.OIDCProvider.Verifier(&oidc.Config{ClientID: config.Config.ClientID})
+		rawIDToken, exists := token.Extra("id_token").(string)
+
+		if !exists {
+			return model.UserInfo{}, "", fmt.Errorf("unable to extract id_token")
 		}
 
-		verifier := oidc.NewVerifier("https://oidc.doa.otc.hlg.de", keySet, &config)
-		idToken, err := verifier.Verify(ctx, token.IDToken)
+		idToken, err := verifier.Verify(ctx, rawIDToken)
 
 		if err != nil {
 			return model.UserInfo{}, "", fmt.Errorf("unable to verify id_token: %s", err)

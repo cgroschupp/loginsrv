@@ -132,7 +132,7 @@ func (c *Config) ConfigureFlagSet(f *flag.FlagSet) {
 			setter := setFunc(func(optsKvList string) error {
 				return c.addOauthOpts(pName, optsKvList)
 			})
-			f.Var(setter, pName, "Oauth config in the form: client_id=..,client_secret=..[,scope=..,][redirect_uri=..]")
+			f.Var(setter, pName, "Oauth config in the form: client_id=..,client_secret=..[,scope=..,][redirect_uri=..][endpoint=..]")
 		}(pName)
 	}
 

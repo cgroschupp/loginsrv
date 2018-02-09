@@ -7,6 +7,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/github"
 )
 
 var githubAPI = "https://api.github.com"
@@ -24,10 +27,11 @@ type GithubUser struct {
 }
 
 var providerGithub = Provider{
-	Name:     "github",
-	AuthURL:  "https://github.com/login/oauth/authorize",
-	TokenURL: "https://github.com/login/oauth/access_token",
-	GetUserInfo: func(token TokenInfo) (model.UserInfo, string, error) {
+	Name: "github",
+	GetEndpoint: func(config *Config) oauth2.Endpoint {
+		return github.Endpoint
+	},
+	GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {
 		gu := GithubUser{}
 		url := fmt.Sprintf("%v/user?access_token=%v", githubAPI, token.AccessToken)
 		resp, err := http.Get(url)

@@ -16,7 +16,7 @@ import (
 type Manager struct {
 	configs      map[string]Config
 	startFlow    func(cfg Config, w http.ResponseWriter)
-	authenticate func(cfg Config, r *http.Request) (TokenInfo, error)
+	authenticate func(cfg Config, r *http.Request) (*oauth2.Token, error)
 }
 
 // NewManager creates a new Manager
@@ -57,7 +57,7 @@ func (manager *Manager) Handle(w http.ResponseWriter, r *http.Request) (
 			return false, false, model.UserInfo{}, err
 		}
 
-		userInfo, _, err := cfg.Provider.GetUserInfo(tokenInfo)
+		userInfo, _, err := cfg.Provider.GetUserInfo(tokenInfo, &cfg)
 		if err != nil {
 			return false, false, model.UserInfo{}, err
 		}
@@ -77,8 +77,8 @@ func (manager *Manager) GetConfigFromRequest(r *http.Request) (Config, error) {
 		return Config{}, fmt.Errorf("no oauth configuration for %v", configName)
 	}
 
-	if cfg.RedirectURI == "" {
-		cfg.RedirectURI = redirectURIFromRequest(r)
+	if cfg.Config.RedirectURL == "" {
+		cfg.Config.RedirectURL = redirectURIFromRequest(r)
 	}
 
 	return cfg, nil
@@ -98,23 +98,28 @@ func (manager *Manager) AddConfig(providerName string, opts map[string]string) e
 	}
 	var endpoint oauth2.Endpoint
 
+	cfg := Config{
+		Provider: p,
+	}
+	var err error
+
 	if providerName == "oidc" {
+		endpoint, exist := opts["endpoint"]
+		if !exist {
+			return fmt.Errorf("missing parameter endpoint")
+		}
+
 		ctx := context.Background()
-		provider, err := oidc.NewProvider(ctx, "https://oidc.doa.otc.hlg.de")
+		cfg.OIDCProvider, err = oidc.NewProvider(ctx, endpoint)
 		if err != nil {
 			return err
 		}
-		endpoint = provider.Endpoint()
-	} else {
-		endpoint = oauth2.Endpoint{AuthURL: p.AuthURL, TokenURL: p.TokenURL}
 	}
+
+	endpoint = p.GetEndpoint(&cfg)
 
 	config := oauth2.Config{
 		Endpoint: endpoint,
-	}
-
-	cfg := Config{
-		Provider: p,
 	}
 
 	clientID, exist := opts["client_id"]
@@ -135,9 +140,7 @@ func (manager *Manager) AddConfig(providerName string, opts map[string]string) e
 
 	if redirectURI, exist := opts["redirect_uri"]; exist {
 		config.RedirectURL = redirectURI
-		cfg.RedirectURI = redirectURI
 	}
-	fmt.Println(config.RedirectURL)
 	cfg.Config = config
 
 	manager.configs[providerName] = cfg
