@@ -10,12 +10,6 @@ type Provider struct {
 	// The name to access the provider in the configuration
 	Name string
 
-	// The oauth authentication url to redirect to
-	AuthURL string
-
-	// The url for token exchange
-	TokenURL string
-
 	// GetUserInfo is a provider specific Implementation
 	// for fetching the user information.
 	// Possible keys in the returned map are:
