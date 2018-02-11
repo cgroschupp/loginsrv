@@ -6,6 +6,7 @@ import (
 	"testing"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/suite"
+	"golang.org/x/oauth2"
 	"encoding/json"
 )
 
@@ -109,7 +110,7 @@ func (suite *BitbucketTestSuite) Test_Bitbucket_getUserInfo() {
 
 	bitbucketAPI = suite.Server.URL
 
-	u, rawJSON, err := providerBitbucket.GetUserInfo(TokenInfo{AccessToken: "secret"})
+	u, rawJSON, err := providerBitbucket.GetUserInfo(&oauth2.Token{AccessToken: "secret"}, &Config{})
 	suite.NoError(err)
 	suite.Equal("tutorials", u.Sub)
 	suite.Equal("tutorials@bitbucket.com", u.Email)

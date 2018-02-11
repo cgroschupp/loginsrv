@@ -3,6 +3,7 @@ package oauth2
 import (
 	"fmt"
 	. "github.com/stretchr/testify/assert"
+	"golang.org/x/oauth2"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -12,12 +13,16 @@ import (
 )
 
 var testConfig = Config{
-	ClientID:     "client42",
-	ClientSecret: "secret",
-	AuthURL:      "http://auth-provider/auth",
-	TokenURL:     "http://auth-provider/token",
-	RedirectURI:  "http://localhost/callback",
-	Scope:        "email other",
+	Config: oauth2.Config{
+		ClientID:     "client42",
+		ClientSecret: "secret",
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "http://auth-provider/auth",
+			TokenURL: "http://auth-provider/token",
+		},
+		RedirectURL: "http://localhost/callback",
+		Scopes:      []string{"email", "other"},
+	},
 }
 
 func Test_StartFlow(t *testing.T) {
@@ -32,9 +37,9 @@ func Test_StartFlow(t *testing.T) {
 	state := strings.Split(cHeader, "=")[1]
 
 	expectedLocation := fmt.Sprintf("%v?client_id=%v&redirect_uri=%v&response_type=code&scope=%v&state=%v",
-		testConfig.AuthURL,
-		testConfig.ClientID,
-		url.QueryEscape(testConfig.RedirectURI),
+		testConfig.Config.Endpoint.AuthURL,
+		testConfig.Config.ClientID,
+		url.QueryEscape(testConfig.Config.RedirectURL),
 		"email+other",
 		state,
 	)
@@ -47,10 +52,11 @@ func Test_Authenticate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Equal(t, "POST", r.Method)
 		Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
-		Equal(t, "application/json", r.Header.Get("Accept"))
+		//Equal(t, "application/json", r.Header.Get("Accept"))
 
 		body, _ := ioutil.ReadAll(r.Body)
-		Equal(t, "client_id=client42&client_secret=secret&code=theCode&grant_type=authorization_code&redirect_uri=http%3A%2F%2Flocalhost%2Fcallback", string(body))
+		Equal(t, "code=theCode&grant_type=authorization_code&redirect_uri=http%3A%2F%2Flocalhost%2Fcallback", string(body))
+		Equal(t, "Basic Y2xpZW50NDI6c2VjcmV0", r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"access_token":"e72e16c7e42f292c6912e7710c838347ae178b4a", "scope":"repo gist", "token_type":"bearer"}`))
@@ -58,9 +64,9 @@ func Test_Authenticate(t *testing.T) {
 	defer server.Close()
 
 	testConfigCopy := testConfig
-	testConfigCopy.TokenURL = server.URL
+	testConfigCopy.Config.Endpoint.TokenURL = server.URL
 
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.Header.Set("Cookie", "oauthState=theState")
 	request.URL, _ = url.Parse("http://localhost/callback?code=theCode&state=theState")
 
@@ -68,7 +74,7 @@ func Test_Authenticate(t *testing.T) {
 
 	NoError(t, err)
 	Equal(t, "e72e16c7e42f292c6912e7710c838347ae178b4a", tokenInfo.AccessToken)
-	Equal(t, "repo gist", tokenInfo.Scope)
+	Equal(t, "repo gist", tokenInfo.Extra("scope"))
 	Equal(t, "bearer", tokenInfo.TokenType)
 }
 
@@ -84,35 +90,29 @@ func Test_Authenticate_CodeExchangeError(t *testing.T) {
 	defer server.Close()
 
 	testConfigCopy := testConfig
-	testConfigCopy.TokenURL = server.URL
+	testConfigCopy.Config.Endpoint.TokenURL = server.URL
 
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.Header.Set("Cookie", "oauthState=theState")
 	request.URL, _ = url.Parse("http://localhost/callback?code=theCode&state=theState")
 
 	testReturnCode = 500
 	tokenInfo, err := Authenticate(testConfigCopy, request)
 	Error(t, err)
-	EqualError(t, err, "error: expected http status 200 on token exchange, but got 500")
-	Equal(t, "", tokenInfo.AccessToken)
+	Equal(t, false, tokenInfo.Valid())
 
 	testReturnCode = 200
 	tokenInfo, err = Authenticate(testConfigCopy, request)
-	Error(t, err)
-	EqualError(t, err, `error: got "bad_verification_code" on token exchange`)
-	Equal(t, "", tokenInfo.AccessToken)
+	Equal(t, false, tokenInfo.Valid())
 
 	testReturnCode = 200
 	testResponseJSON = `{"foo": "bar"}`
 	tokenInfo, err = Authenticate(testConfigCopy, request)
-	Error(t, err)
-	EqualError(t, err, `error: no access_token on token exchange`)
-	Equal(t, "", tokenInfo.AccessToken)
-
+	Equal(t, false, tokenInfo.Valid())
 }
 
 func Test_Authentication_ProviderError(t *testing.T) {
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.URL, _ = url.Parse("http://localhost/callback?error=provider_login_error")
 
 	_, err := Authenticate(testConfig, request)
@@ -122,7 +122,7 @@ func Test_Authentication_ProviderError(t *testing.T) {
 }
 
 func Test_Authentication_StateError(t *testing.T) {
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.Header.Set("Cookie", "oauthState=XXXXXXX")
 	request.URL, _ = url.Parse("http://localhost/callback?code=theCode&state=theState")
 
@@ -133,7 +133,7 @@ func Test_Authentication_StateError(t *testing.T) {
 }
 
 func Test_Authentication_NoCodeError(t *testing.T) {
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.Header.Set("Cookie", "oauthState=theState")
 	request.URL, _ = url.Parse("http://localhost/callback?state=theState")
 
@@ -151,24 +151,24 @@ func Test_Authentication_Provider500(t *testing.T) {
 	defer server.Close()
 
 	testConfigCopy := testConfig
-	testConfigCopy.TokenURL = server.URL
+	testConfigCopy.Config.Endpoint.TokenURL = server.URL
 
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.Header.Set("Cookie", "oauthState=theState")
 	request.URL, _ = url.Parse("http://localhost/callback?code=theCode&state=theState")
 
 	_, err := Authenticate(testConfigCopy, request)
 
 	Error(t, err)
-	Equal(t, "error: expected http status 200 on token exchange, but got 500", err.Error())
+	Equal(t, "oauth2: cannot fetch token: 500 Internal Server Error\nResponse: ", err.Error())
 }
 
 func Test_Authentication_ProviderNetworkError(t *testing.T) {
 
 	testConfigCopy := testConfig
-	testConfigCopy.TokenURL = "http://localhost:12345678"
+	testConfigCopy.Config.Endpoint.TokenURL = "http://localhost:12345678"
 
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.Header.Set("Cookie", "oauthState=theState")
 	request.URL, _ = url.Parse("http://localhost/callback?code=theCode&state=theState")
 
@@ -189,14 +189,13 @@ func Test_Authentication_TokenParseError(t *testing.T) {
 	defer server.Close()
 
 	testConfigCopy := testConfig
-	testConfigCopy.TokenURL = server.URL
+	testConfigCopy.Config.Endpoint.TokenURL = server.URL
 
-	request, _ := http.NewRequest("GET", testConfig.RedirectURI, nil)
+	request, _ := http.NewRequest("GET", testConfig.Config.RedirectURL, nil)
 	request.Header.Set("Cookie", "oauthState=theState")
 	request.URL, _ = url.Parse("http://localhost/callback?code=theCode&state=theState")
 
-	_, err := Authenticate(testConfigCopy, request)
+	token, _ := Authenticate(testConfigCopy, request)
 
-	Error(t, err)
-	Equal(t, "error on parsing oauth token: unexpected end of JSON input", err.Error())
+	Equal(t, false, token.Valid())
 }

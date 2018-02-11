@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"golang.org/x/oauth2"
 
 	. "github.com/stretchr/testify/assert"
 )
@@ -46,7 +47,7 @@ func Test_Google_getUserInfo(t *testing.T) {
 
 	googleAPI = server.URL
 
-	u, rawJSON, err := providerGoogle.GetUserInfo(TokenInfo{AccessToken: "secret"})
+	u, rawJSON, err := providerGoogle.GetUserInfo(&oauth2.Token{AccessToken: "secret"}, &Config{})
 	NoError(t, err)
 	Equal(t, "test@gmail.com", u.Sub)
 	Equal(t, "test@gmail.com", u.Email)

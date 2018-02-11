@@ -5,23 +5,29 @@ import (
 	"errors"
 	. "github.com/stretchr/testify/assert"
 	"github.com/tarent/loginsrv/model"
+	"golang.org/x/oauth2"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func Test_Manager_Positive_Flow(t *testing.T) {
 	var startFlowCalled, authenticateCalled, getUserInfoCalled bool
 	var startFlowReceivedConfig, authenticateReceivedConfig Config
-	expectedToken := TokenInfo{AccessToken: "the-access-token"}
+	expectedToken := oauth2.Token{AccessToken: "the-access-token"}
 
 	exampleProvider := Provider{
-		Name:     "example",
-		AuthURL:  "https://example.com/login/oauth/authorize",
-		TokenURL: "https://example.com/login/oauth/access_token",
-		GetUserInfo: func(token TokenInfo) (model.UserInfo, string, error) {
+		Name: "example",
+		GetEndpoint: func(config *Config) oauth2.Endpoint {
+			return oauth2.Endpoint{
+				AuthURL:  "https://example.com/login/oauth/authorize",
+				TokenURL: "https://example.com/login/oauth/access_token",
+			}
+		},
+		GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {
 			getUserInfoCalled = true
-			Equal(t, token, expectedToken)
+			Equal(t, token, &expectedToken)
 			return model.UserInfo{
 				Sub: "the-username",
 			}, "", nil
@@ -31,21 +37,25 @@ func Test_Manager_Positive_Flow(t *testing.T) {
 	defer UnRegisterProvider(exampleProvider.Name)
 
 	expectedConfig := Config{
-		ClientID:     "client42",
-		ClientSecret: "secret",
-		AuthURL:      exampleProvider.AuthURL,
-		TokenURL:     exampleProvider.TokenURL,
-		RedirectURI:  "http://localhost",
-		Scope:        "email other",
-		Provider:     exampleProvider,
+		Provider: exampleProvider,
+		Config: oauth2.Config{
+			ClientID:     "client42",
+			ClientSecret: "secret",
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  exampleProvider.GetEndpoint(nil).AuthURL,
+				TokenURL: exampleProvider.GetEndpoint(nil).TokenURL,
+			},
+			RedirectURL: "http://localhost",
+			Scopes:      []string{"email", "other"},
+		},
 	}
 
 	m := NewManager()
 	m.AddConfig(exampleProvider.Name, map[string]string{
-		"client_id":     expectedConfig.ClientID,
-		"client_secret": expectedConfig.ClientSecret,
-		"scope":         expectedConfig.Scope,
-		"redirect_uri":  expectedConfig.RedirectURI,
+		"client_id":     expectedConfig.Config.ClientID,
+		"client_secret": expectedConfig.Config.ClientSecret,
+		"scope":         strings.Join(expectedConfig.Config.Scopes, " "),
+		"redirect_uri":  expectedConfig.Config.RedirectURL,
 	})
 
 	m.startFlow = func(cfg Config, w http.ResponseWriter) {
@@ -53,10 +63,10 @@ func Test_Manager_Positive_Flow(t *testing.T) {
 		startFlowReceivedConfig = cfg
 	}
 
-	m.authenticate = func(cfg Config, r *http.Request) (TokenInfo, error) {
+	m.authenticate = func(cfg Config, r *http.Request) (*oauth2.Token, error) {
 		authenticateCalled = true
 		authenticateReceivedConfig = cfg
-		return expectedToken, nil
+		return &expectedToken, nil
 	}
 
 	// start flow
@@ -91,10 +101,14 @@ func Test_Manager_NoAauthOnWrongCode(t *testing.T) {
 	var authenticateCalled, getUserInfoCalled bool
 
 	exampleProvider := Provider{
-		Name:     "example",
-		AuthURL:  "https://example.com/login/oauth/authorize",
-		TokenURL: "https://example.com/login/oauth/access_token",
-		GetUserInfo: func(token TokenInfo) (model.UserInfo, string, error) {
+		Name: "example",
+		GetEndpoint: func(config *Config) oauth2.Endpoint {
+			return oauth2.Endpoint{
+				AuthURL:  "https://example.com/login/oauth/authorize",
+				TokenURL: "https://example.com/login/oauth/access_token",
+			}
+		},
+		GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {
 			getUserInfoCalled = true
 			return model.UserInfo{}, "", nil
 		},
@@ -108,9 +122,9 @@ func Test_Manager_NoAauthOnWrongCode(t *testing.T) {
 		"client_secret": "bar",
 	})
 
-	m.authenticate = func(cfg Config, r *http.Request) (TokenInfo, error) {
+	m.authenticate = func(cfg Config, r *http.Request) (*oauth2.Token, error) {
 		authenticateCalled = true
-		return TokenInfo{}, errors.New("code not valid")
+		return &oauth2.Token{}, errors.New("code not valid")
 	}
 
 	// callback
@@ -242,15 +256,15 @@ func Test_Manager_RedirectURI_Generation(t *testing.T) {
 
 	_, _, _, err := m.Handle(httptest.NewRecorder(), r)
 	NoError(t, err)
-	Equal(t, callURL, startFlowReceivedConfig.RedirectURI)
+	Equal(t, callURL, startFlowReceivedConfig.Config.RedirectURL)
 }
 
 func assertEqualConfig(t *testing.T, c1, c2 Config) {
-	Equal(t, c1.AuthURL, c2.AuthURL)
-	Equal(t, c1.ClientID, c2.ClientID)
-	Equal(t, c1.ClientSecret, c2.ClientSecret)
-	Equal(t, c1.Scope, c2.Scope)
-	Equal(t, c1.RedirectURI, c2.RedirectURI)
-	Equal(t, c1.TokenURL, c2.TokenURL)
+	Equal(t, c1.Config.Endpoint.AuthURL, c2.Config.Endpoint.AuthURL)
+	Equal(t, c1.Config.ClientID, c2.Config.ClientID)
+	Equal(t, c1.Config.ClientSecret, c2.Config.ClientSecret)
+	Equal(t, c1.Config.Scopes, c2.Config.Scopes)
+	Equal(t, c1.Config.RedirectURL, c2.Config.RedirectURL)
+	Equal(t, c1.Config.Endpoint.TokenURL, c2.Config.Endpoint.TokenURL)
 	Equal(t, c1.Provider.Name, c2.Provider.Name)
 }

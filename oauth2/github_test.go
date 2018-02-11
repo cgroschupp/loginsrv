@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"golang.org/x/oauth2"
 )
 
 var githubTestUserResponse = `{
@@ -50,7 +51,7 @@ func Test_Github_getUserInfo(t *testing.T) {
 
 	githubAPI = server.URL
 
-	u, rawJSON, err := providerGithub.GetUserInfo(TokenInfo{AccessToken: "secret"})
+	u, rawJSON, err := providerGithub.GetUserInfo(&oauth2.Token{AccessToken: "secret"}, &Config{})
 	NoError(t, err)
 	Equal(t, "octocat", u.Sub)
 	Equal(t, "octocat@github.com", u.Email)
