@@ -23,22 +23,6 @@ type Config struct {
 	OIDCProvider *oidc.Provider
 }
 
-// TokenInfo represents the credentials used to authorize
-// the requests to access protected resources on the OAuth 2.0
-// provider's backend.
-type TokenInfo struct {
-	// AccessToken is the token that authorizes and authenticates
-	// the requests.
-	AccessToken string `json:"access_token"`
-
-	// TokenType is the type of token.
-	TokenType string `json:"token_type,omitempty"`
-
-	// The scopes for this tolen
-	Scope   string `json:"scope,omitempty"`
-	IDToken string `json:"id_token,omitempty"`
-}
-
 // JSONError represents an oauth error response in json form.
 type JSONError struct {
 	Error string `json:"error"`
@@ -83,6 +67,7 @@ func Authenticate(cfg Config, r *http.Request) (*oauth2.Token, error) {
 
 	ctx := context.Background()
 	return cfg.Config.Exchange(ctx, code)
+
 }
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
