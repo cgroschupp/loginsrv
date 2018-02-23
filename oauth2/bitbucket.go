@@ -93,7 +93,7 @@ func getBitbucketEmails(token *oauth2.Token) (emails, error) {
 
 var providerBitbucket = Provider{
 	Name: "bitbucket",
-	GetEndpoint: func(config *Config) oauth2.Endpoint {
+	GetEndpoint: func(config *Config, opts map[string]string) oauth2.Endpoint {
 		return bitbucket.Endpoint
 	},
 	GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {

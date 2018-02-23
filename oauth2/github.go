@@ -28,7 +28,7 @@ type GithubUser struct {
 
 var providerGithub = Provider{
 	Name: "github",
-	GetEndpoint: func(config *Config) oauth2.Endpoint {
+	GetEndpoint: func(config *Config, opts map[string]string) oauth2.Endpoint {
 		return github.Endpoint
 	},
 	GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {

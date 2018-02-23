@@ -15,7 +15,20 @@ func init() {
 
 var providerOidc = Provider{
 	Name: "oidc",
-	GetEndpoint: func(config *Config) oauth2.Endpoint {
+	GetEndpoint: func(config *Config, opts map[string]string) oauth2.Endpoint {
+		endpoint, exist := opts["endpoint"]
+		if !exist {
+			//return fmt.Errorf("missing parameter endpoint")
+			return oauth2.Endpoint{}
+		}
+
+		ctx := context.Background()
+		test, err := oidc.NewProvider(ctx, endpoint)
+		config.OIDCProvider = test
+		if err != nil {
+			return oauth2.Endpoint{}
+		}
+
 		return config.OIDCProvider.Endpoint()
 	},
 	GetUserInfo: func(token *oauth2.Token, config *Config) (model.UserInfo, string, error) {

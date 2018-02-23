@@ -15,7 +15,7 @@ type Provider struct {
 	// Possible keys in the returned map are:
 	// username, email, name
 	GetUserInfo func(token *oauth2.Token, config *Config) (u model.UserInfo, rawUserJson string, err error)
-	GetEndpoint func(config *Config) (endpoint oauth2.Endpoint)
+	GetEndpoint func(config *Config, opts map[string]string) (endpoint oauth2.Endpoint)
 }
 
 var provider = map[string]Provider{}

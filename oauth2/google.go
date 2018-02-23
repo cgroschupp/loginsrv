@@ -31,7 +31,7 @@ type GoogleUser struct {
 
 var providerGoogle = Provider{
 	Name:     "google",
-	GetEndpoint: func(config *Config) oauth2.Endpoint {
+	GetEndpoint: func(config *Config, opts map[string]string) oauth2.Endpoint {
 		return oauth2.Endpoint{
 			AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
 			TokenURL: "https://www.googleapis.com/oauth2/v4/token",

@@ -1,9 +1,7 @@
 package oauth2
 
 import (
-	"context"
 	"fmt"
-	oidc "github.com/coreos/go-oidc"
 	"github.com/tarent/loginsrv/model"
 	"golang.org/x/oauth2"
 	"net/http"
@@ -101,22 +99,9 @@ func (manager *Manager) AddConfig(providerName string, opts map[string]string) e
 	cfg := Config{
 		Provider: p,
 	}
-	var err error
+	//var err error
 
-	if providerName == "oidc" {
-		endpoint, exist := opts["endpoint"]
-		if !exist {
-			return fmt.Errorf("missing parameter endpoint")
-		}
-
-		ctx := context.Background()
-		cfg.OIDCProvider, err = oidc.NewProvider(ctx, endpoint)
-		if err != nil {
-			return err
-		}
-	}
-
-	endpoint = p.GetEndpoint(&cfg)
+	endpoint = p.GetEndpoint(&cfg, opts)
 
 	config := oauth2.Config{
 		Endpoint: endpoint,
